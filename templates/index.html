@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OAuth Attack Simulation Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #050a0e;
+      --surface: #0a1628;
+      --border: #0d2137;
+      --accent: #00ff88;
+      --red: #ff3b3b;
+      --yellow: #ffd700;
+      --text: #c9d8e8;
+      --muted: #4a6070;
+      --mono: 'Share Tech Mono', monospace;
+      --sans: 'Rajdhani', sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,255,136,0.015) 2px, rgba(0,255,136,0.015) 4px
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    /* ── Header ── */
+    .header {
+      text-align: center;
+      margin-bottom: 60px;
+      animation: fadeDown 0.6s ease;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--red);
+      border: 1px solid var(--red);
+      padding: 4px 12px;
+      letter-spacing: 3px;
+      margin-bottom: 20px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    h1 {
+      font-family: var(--mono);
+      font-size: clamp(24px, 5vw, 42px);
+      color: var(--accent);
+      letter-spacing: 2px;
+      line-height: 1.2;
+      margin-bottom: 16px;
+      text-shadow: 0 0 30px rgba(0,255,136,0.3);
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: var(--muted);
+      font-weight: 400;
+      letter-spacing: 1px;
+    }
+
+    /* ── Info Banner ── */
+    .info-banner {
+      background: rgba(255,59,59,0.08);
+      border: 1px solid rgba(255,59,59,0.3);
+      border-left: 3px solid var(--red);
+      padding: 20px 24px;
+      margin-bottom: 40px;
+      animation: fadeUp 0.6s ease 0.2s both;
+    }
+
+    .info-banner .label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--red);
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+
+    .info-banner p {
+      font-size: 15px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .info-banner strong { color: var(--yellow); }
+
+    /* ── Attack Chain ── */
+    .chain {
+      margin-bottom: 40px;
+      animation: fadeUp 0.6s ease 0.3s both;
+    }
+
+    .chain-title {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      margin-bottom: 16px;
+    }
+
+    .chain-steps {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 20px;
+    }
+
+    .chain-step {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .chain-step.highlight {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: rgba(0,255,136,0.05);
+    }
+
+    .chain-step.danger {
+      color: var(--red);
+      border-color: var(--red);
+      background: rgba(255,59,59,0.05);
+    }
+
+    .chain-arrow {
+      color: var(--muted);
+      font-family: var(--mono);
+      padding: 0 6px;
+      font-size: 14px;
+    }
+
+    /* ── Scope Picker ── */
+    .scope-section {
+      margin-bottom: 40px;
+      animation: fadeUp 0.6s ease 0.4s both;
+    }
+
+    .section-title {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      margin-bottom: 16px;
+    }
+
+    .scope-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .scope-cards { grid-template-columns: 1fr; }
+      .chain-steps { flex-direction: column; align-items: flex-start; }
+      .chain-arrow { transform: rotate(90deg); }
+    }
+
+    .scope-card {
+      border: 1px solid var(--border);
+      padding: 24px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      display: block;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .scope-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .scope-card.minimal::before { background: rgba(0,255,136,0.04); }
+    .scope-card.full::before { background: rgba(255,59,59,0.04); }
+    .scope-card:hover::before { opacity: 1; }
+
+    .scope-card.minimal { border-color: rgba(0,255,136,0.2); }
+    .scope-card.full { border-color: rgba(255,59,59,0.2); }
+
+    .scope-card:hover.minimal {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px rgba(0,255,136,0.1);
+      transform: translateY(-2px);
+    }
+
+    .scope-card:hover.full {
+      border-color: var(--red);
+      box-shadow: 0 0 20px rgba(255,59,59,0.1);
+      transform: translateY(-2px);
+    }
+
+    .scope-tag {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      padding: 3px 8px;
+      margin-bottom: 12px;
+      display: inline-block;
+    }
+
+    .scope-card.minimal .scope-tag { color: var(--accent); border: 1px solid var(--accent); }
+    .scope-card.full .scope-tag { color: var(--red); border: 1px solid var(--red); }
+
+    .scope-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+
+    .scope-card.minimal h3 { color: var(--accent); }
+    .scope-card.full h3 { color: var(--red); }
+
+    .scope-card p {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+
+    .scope-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .scope-list li {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      padding: 4px 8px;
+      background: rgba(255,255,255,0.03);
+      border-left: 2px solid;
+    }
+
+    .scope-card.minimal .scope-list li { border-color: var(--accent); }
+    .scope-card.full .scope-list li { border-color: var(--red); }
+
+    .scope-card .cta {
+      margin-top: 20px;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .scope-card.minimal .cta { color: var(--accent); }
+    .scope-card.full .cta { color: var(--red); }
+
+    /* ── Objectives ── */
+    .objectives {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 24px;
+      margin-bottom: 40px;
+      animation: fadeUp 0.6s ease 0.35s both;
+    }
+
+    .objectives .section-title { margin-bottom: 16px; }
+
+    .obj-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 600px) { .obj-grid { grid-template-columns: 1fr; } }
+
+    .obj-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .obj-num {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .obj-text {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    /* ── Footer ── */
+    .footnote {
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 40px;
+      line-height: 1.8;
+      animation: fadeUp 0.6s ease 0.5s both;
+    }
+
+    .footnote span { color: var(--accent); }
+
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="badge">⚠ EDUCATIONAL LAB — CONSENT-BASED SIMULATION</div>
+    <h1>OAUTH 2.0 ATTACK<br/>SIMULATION LAB</h1>
+    <p class="subtitle">Understand OAuth token exposure through hands-on demonstration</p>
+  </div>
+
+  <!-- Info Banner -->
+  <div class="info-banner">
+    <div class="label">// ABOUT THIS LAB</div>
+    <p>
+      OAuth supply chain attacks are among the most common and damaging real-world breach patterns.
+      Attackers don't always target you directly — they target a <strong>trusted third-party application</strong>
+      you've granted access to, steal the stored OAuth tokens, and use them to impersonate you silently.
+      <strong>This lab recreates that mechanism with your full knowledge and consent.</strong>
+    </p>
+  </div>
+
+  <!-- Attack Chain -->
+  <div class="chain">
+    <div class="chain-title">// GENERIC SUPPLY CHAIN ATTACK PATTERN</div>
+    <div class="chain-steps">
+      <div class="chain-step">Initial Compromise</div>
+      <div class="chain-arrow">→</div>
+      <div class="chain-step">Third-Party App Breached</div>
+      <div class="chain-arrow">→</div>
+      <div class="chain-step highlight">OAuth Token Stolen</div>
+      <div class="chain-arrow">→</div>
+      <div class="chain-step">Identity Provider Accessed</div>
+      <div class="chain-arrow">→</div>
+      <div class="chain-step danger">Target Organization Breached</div>
+    </div>
+  </div>
+
+  <!-- Lab Objectives -->
+  <div class="objectives">
+    <div class="section-title">// LAB OBJECTIVES</div>
+    <div class="obj-grid">
+      <div class="obj-item">
+        <div class="obj-num">01</div>
+        <div class="obj-text">Understand how OAuth tokens are captured and what they expose</div>
+      </div>
+      <div class="obj-item">
+        <div class="obj-num">02</div>
+        <div class="obj-text">See the difference between minimal and overpermissioned OAuth scopes</div>
+      </div>
+      <div class="obj-item">
+        <div class="obj-num">03</div>
+        <div class="obj-text">Observe how stolen tokens enable lateral movement without a password</div>
+      </div>
+      <div class="obj-item">
+        <div class="obj-num">04</div>
+        <div class="obj-text">Practice token revocation as a real defensive countermeasure</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scope Picker -->
+  <div class="scope-section">
+    <div class="section-title">// SELECT ATTACK SCENARIO — CLICK TO BEGIN</div>
+    <div class="scope-cards">
+
+      <a href="/login?scope=minimal" class="scope-card minimal">
+        <div class="scope-tag">SCENARIO A</div>
+        <h3>MINIMAL SCOPE</h3>
+        <p>Grants only basic profile access. Represents a well-scoped OAuth integration. Low blast radius if token is stolen.</p>
+        <ul class="scope-list">
+          <li>openid</li>
+          <li>email</li>
+          <li>profile</li>
+        </ul>
+        <div class="cta">▶ RUN THIS SCENARIO →</div>
+      </a>
+
+      <a href="/login?scope=full" class="scope-card full">
+        <div class="scope-tag">SCENARIO B — OVERPERMISSIONED</div>
+        <h3>EXCESSIVE SCOPE</h3>
+        <p>Simulates an employee granting broad permissions to a third-party app. Catastrophic if that app is compromised.</p>
+        <ul class="scope-list">
+          <li>openid + email + profile</li>
+          <li>Google Drive (read)</li>
+          <li>Google Calendar (read)</li>
+        </ul>
+        <div class="cta">☠ RUN THIS SCENARIO →</div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footnote">
+    <span>// CONSENT NOTICE</span> — You will be redirected to a real Google OAuth consent screen.<br/>
+    All captured data is stored only in your local session and never transmitted externally.<br/>
+    This lab is intended strictly for <span>cybersecurity education</span> and awareness training.
+  </div>
+
+</div>
+</body>
+</html>

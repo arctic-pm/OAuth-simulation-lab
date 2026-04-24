@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OAuth Lab — Token Analysis Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #050a0e;
+      --surface: #0a1628;
+      --surface2: #0d1f35;
+      --border: #0d2137;
+      --accent: #00ff88;
+      --red: #ff3b3b;
+      --yellow: #ffd700;
+      --blue: #00aaff;
+      --text: #c9d8e8;
+      --muted: #4a6070;
+      --mono: 'Share Tech Mono', monospace;
+      --sans: 'Rajdhani', sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,255,136,0.012) 2px, rgba(0,255,136,0.012) 4px
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* ── Topbar ── */
+    .topbar {
+      background: rgba(255,59,59,0.08);
+      border-bottom: 1px solid rgba(255,59,59,0.3);
+      padding: 12px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+
+    .topbar-left { display: flex; align-items: center; gap: 16px; }
+
+    .alert-dot {
+      width: 10px; height: 10px;
+      background: var(--red);
+      border-radius: 50%;
+      animation: blink 1s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--red); }
+      50% { opacity: 0.3; box-shadow: none; }
+    }
+
+    .topbar-title {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--red);
+      letter-spacing: 2px;
+    }
+
+    .topbar-right {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    .page-header {
+      margin-bottom: 40px;
+      animation: fadeUp 0.5s ease;
+    }
+
+    .page-header h1 {
+      font-family: var(--mono);
+      font-size: clamp(20px, 4vw, 36px);
+      color: var(--red);
+      letter-spacing: 2px;
+      text-shadow: 0 0 20px rgba(255,59,59,0.4);
+      margin-bottom: 8px;
+    }
+
+    .page-header p {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .page-header p span { color: var(--accent); }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .section-gap { margin-bottom: 20px; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 24px;
+      animation: fadeUp 0.5s ease both;
+    }
+
+    .card.danger {
+      border-color: rgba(255,59,59,0.25);
+      background: rgba(255,59,59,0.04);
+    }
+
+    .card.success {
+      border-color: rgba(0,255,136,0.2);
+      background: rgba(0,255,136,0.03);
+    }
+
+    .card-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: var(--muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-label.red { color: var(--red); }
+    .card-label.green { color: var(--accent); }
+    .card-label.yellow { color: var(--yellow); }
+
+    /* ── Profile ── */
+    .profile-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .profile-avatar {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      border: 2px solid var(--red);
+      box-shadow: 0 0 20px rgba(255,59,59,0.3);
+    }
+
+    .profile-info h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 1px;
+    }
+
+    .profile-info p {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--accent);
+      margin-top: 4px;
+    }
+
+    .profile-info .sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ── Token Box ── */
+    .token-box {
+      background: #020810;
+      border: 1px solid var(--border);
+      padding: 16px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--accent);
+      word-break: break-all;
+      line-height: 1.6;
+      position: relative;
+      margin-bottom: 16px;
+    }
+
+    .token-box .token-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 12px; right: 12px;
+      background: rgba(0,255,136,0.1);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 4px 10px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover { background: rgba(0,255,136,0.2); }
+
+    /* ── Stats ── */
+    .stat-value {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .stat-value.red { color: var(--red); }
+    .stat-value.green { color: var(--accent); }
+    .stat-value.yellow { color: var(--yellow); }
+
+    .stat-desc { font-size: 13px; color: var(--muted); }
+
+    /* ── Scope Tags ── */
+    .scope-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .scope-tag {
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 4px 10px;
+      border: 1px solid;
+      letter-spacing: 1px;
+    }
+
+    .scope-tag.low {
+      color: var(--accent);
+      border-color: rgba(0,255,136,0.3);
+      background: rgba(0,255,136,0.05);
+    }
+
+    .scope-tag.high {
+      color: var(--red);
+      border-color: rgba(255,59,59,0.3);
+      background: rgba(255,59,59,0.05);
+    }
+
+    /* ── Damage Assessment ── */
+    .damage-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .damage-row:last-child { border-bottom: none; }
+
+    .damage-icon { font-size: 20px; width: 32px; flex-shrink: 0; text-align: center; }
+
+    .damage-info h4 {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .damage-info p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+    .damage-badge {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 3px 8px;
+      border: 1px solid;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .badge-low { color: var(--accent); border-color: var(--accent); }
+    .badge-med { color: var(--yellow); border-color: var(--yellow); }
+    .badge-high { color: var(--red); border-color: var(--red); }
+
+    /* ── Attack Timeline ── */
+    .timeline { position: relative; padding-left: 24px; }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 7px; top: 8px; bottom: 8px;
+      width: 1px;
+      background: linear-gradient(to bottom, var(--red), var(--accent));
+    }
+
+    .timeline-item {
+      position: relative;
+      padding: 0 0 24px 24px;
+    }
+
+    .timeline-item:last-child { padding-bottom: 0; }
+
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -17px; top: 6px;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red);
+    }
+
+    .timeline-item.you::before {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: blink 1s infinite;
+    }
+
+    .timeline-phase {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      margin-bottom: 4px;
+    }
+
+    .timeline-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .timeline-item.you .timeline-title { color: var(--accent); }
+
+    .timeline-desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .timeline-desc strong { color: var(--text); }
+
+    /* ── Defense Section ── */
+    .defense-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 8px;
+    }
+
+    @media (max-width: 768px) { .defense-grid { grid-template-columns: 1fr; } }
+
+    .defense-step-num {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .defense-step-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .defense-step-desc { font-size: 13px; color: var(--muted); }
+
+    /* ── Revoke Button ── */
+    .revoke-section {
+      margin-top: 20px;
+      text-align: center;
+      animation: fadeUp 0.5s ease 0.6s both;
+    }
+
+    .revoke-btn {
+      display: inline-block;
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 14px;
+      letter-spacing: 3px;
+      padding: 16px 48px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .revoke-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(0,255,136,0.08);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .revoke-btn:hover::before { opacity: 1; }
+    .revoke-btn:hover {
+      box-shadow: 0 0 30px rgba(0,255,136,0.2);
+      transform: translateY(-2px);
+    }
+
+    .revoke-note {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 12px;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="alert-dot"></div>
+    <div class="topbar-title">⚠ SIMULATED ATTACKER VIEW — TOKEN CAPTURED</div>
+  </div>
+  <div class="topbar-right">
+    EDUCATIONAL LAB &nbsp;|&nbsp; CONSENT-BASED DEMO &nbsp;|&nbsp; OAUTH ATTACK SIMULATION
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="page-header">
+    <h1>// OAUTH TOKEN SUCCESSFULLY CAPTURED</h1>
+    <p>
+      This simulates what an attacker observes after compromising a third-party application that stored OAuth tokens.
+      Your token was captured in <span>server memory</span> — illustrating a real-world OAuth supply chain attack pattern.
+    </p>
+  </div>
+
+  <!-- Row 1: Profile + Token Metadata -->
+  <div class="grid-2 section-gap">
+
+    <!-- Victim Profile -->
+    <div class="card danger" style="animation-delay:0.1s">
+      <div class="card-label red">// 01 — EXPOSED USER PROFILE</div>
+      <div class="profile-row">
+        {% if userinfo and userinfo.picture %}
+          <img src="{{ userinfo.picture }}" class="profile-avatar" alt="profile"/>
+        {% else %}
+          <div class="profile-avatar" style="background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:28px;">👤</div>
+        {% endif %}
+        <div class="profile-info">
+          <h2>{{ userinfo.name if userinfo else 'Unknown' }}</h2>
+          <p>{{ userinfo.email if userinfo else 'No email captured' }}</p>
+          <div class="sub">Account ID: {{ userinfo.sub if userinfo else '—' }}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <div style="font-family:var(--mono);font-size:11px;padding:4px 10px;border:1px solid rgba(0,255,136,0.3);color:var(--accent);">
+          ✓ Email Verified
+        </div>
+        {% if userinfo and userinfo.family_name %}
+        <div style="font-family:var(--mono);font-size:11px;padding:4px 10px;border:1px solid var(--border);color:var(--muted);">
+          {{ userinfo.given_name }} {{ userinfo.family_name }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Token Metadata -->
+    <div class="card" style="animation-delay:0.2s">
+      <div class="card-label green">// 02 — TOKEN METADATA</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+        <div>
+          <div class="stat-value green">{{ expires_in }}s</div>
+          <div class="stat-desc">Token lifetime (~1 hr)</div>
+        </div>
+        <div>
+          <div class="stat-value {% if scope_type == 'full' %}red{% else %}yellow{% endif %}">
+            {% if scope_type == 'full' %}CRITICAL{% else %}LOW{% endif %}
+          </div>
+          <div class="stat-desc">Risk level</div>
+        </div>
+      </div>
+      <div class="card-label" style="margin-bottom:8px;">SCOPES GRANTED</div>
+      <div class="scope-tags">
+        {% for s in scope.split() %}
+          <div class="scope-tag {% if 'drive' in s or 'calendar' in s or 'gmail' in s %}high{% else %}low{% endif %}">
+            {{ s.split('/')[-1] if '/' in s else s }}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Row 2: Raw Token -->
+  <div class="card section-gap" style="animation-delay:0.25s">
+    <div class="card-label red">// 03 — CAPTURED ACCESS TOKEN</div>
+    <div class="token-box">
+      <span class="token-label">ACCESS_TOKEN</span>
+      <button class="copy-btn" onclick="copyToken()">COPY</button>
+      <span id="token-val">{{ access_token }}</span>
+    </div>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8;">
+      <span style="color:var(--red);">⚠</span>
+      This token is valid right now and can be used to call Google APIs on your behalf — no password required.<br/>
+      Tokens like this can be exposed if a third-party system that stores them is compromised.
+    </div>
+  </div>
+
+  <!-- Row 3: Damage Assessment + Attack Timeline -->
+  <div class="grid-2 section-gap">
+
+    <!-- Damage Assessment -->
+    <div class="card" style="animation-delay:0.3s">
+      <div class="card-label red">// 04 — DAMAGE ASSESSMENT</div>
+
+      <div class="damage-row">
+        <div class="damage-icon">📧</div>
+        <div class="damage-info">
+          <h4>Read emails</h4>
+          <p>Full inbox access if Gmail scope was granted by the user</p>
+        </div>
+        <div class="damage-badge {% if scope_type == 'full' %}badge-high{% else %}badge-low{% endif %}">
+          {% if scope_type == 'full' %}POSSIBLE{% else %}BLOCKED{% endif %}
+        </div>
+      </div>
+
+      <div class="damage-row">
+        <div class="damage-icon">📁</div>
+        <div class="damage-info">
+          <h4>Access cloud storage</h4>
+          <p>Read documents, files, and internal data from Drive</p>
+        </div>
+        <div class="damage-badge {% if scope_type == 'full' %}badge-high{% else %}badge-low{% endif %}">
+          {% if scope_type == 'full' %}POSSIBLE{% else %}BLOCKED{% endif %}
+        </div>
+      </div>
+
+      <div class="damage-row">
+        <div class="damage-icon">📅</div>
+        <div class="damage-info">
+          <h4>Read calendar</h4>
+          <p>Meeting schedules, project names, internal contacts</p>
+        </div>
+        <div class="damage-badge {% if scope_type == 'full' %}badge-med{% else %}badge-low{% endif %}">
+          {% if scope_type == 'full' %}POSSIBLE{% else %}BLOCKED{% endif %}
+        </div>
+      </div>
+
+      <div class="damage-row">
+        <div class="damage-icon">👤</div>
+        <div class="damage-info">
+          <h4>Identity impersonation</h4>
+          <p>Silently act as the user across any Google-connected service</p>
+        </div>
+        <div class="damage-badge badge-high">ALWAYS POSSIBLE</div>
+      </div>
+
+      <div class="damage-row">
+        <div class="damage-icon">🔗</div>
+        <div class="damage-info">
+          <h4>Lateral movement</h4>
+          <p>Pivot into Slack, GitHub, Notion, and other SSO-linked platforms</p>
+        </div>
+        <div class="damage-badge badge-high">ALWAYS POSSIBLE</div>
+      </div>
+
+    </div>
+
+    <!-- Attack Phase Timeline -->
+    <div class="card" style="animation-delay:0.4s">
+      <div class="card-label yellow">// 05 — SUPPLY CHAIN ATTACK PHASES</div>
+      <div class="timeline">
+
+        <div class="timeline-item">
+          <div class="timeline-phase">PHASE 1 — INITIAL ACCESS</div>
+          <div class="timeline-title">Attacker Gains a Foothold</div>
+          <div class="timeline-desc">A credential stealer or phishing campaign compromises an employee at <strong>a third-party application</strong> the target organisation uses.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-phase">PHASE 2 — COLLECTION</div>
+          <div class="timeline-title">Third-Party Infrastructure Breached</div>
+          <div class="timeline-desc">Attacker pivots into the third-party app's backend. <strong>Stored OAuth tokens are exfiltrated</strong> from the database or object storage.</div>
+        </div>
+
+        <div class="timeline-item you">
+          <div class="timeline-phase">YOU ARE HERE</div>
+          <div class="timeline-title">↑ YOUR TOKEN IS AT THIS STAGE</div>
+          <div class="timeline-desc">Your access token is sitting in server memory. <strong>This is the asset that gets stolen.</strong></div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-phase">PHASE 3 — TOKEN REPLAY</div>
+          <div class="timeline-title">Compromised Employee Token Replayed</div>
+          <div class="timeline-desc">The stolen token is used directly against the identity provider. <strong>No password needed.</strong> Google sees a valid token and grants access.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-phase">PHASE 4 — IMPACT</div>
+          <div class="timeline-title">Simulated Data Breach Scenario</div>
+          <div class="timeline-desc">Internal systems accessed via SSO. API keys, source code, and sensitive credentials exfiltrated. <strong>Full organisational compromise.</strong></div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Row 4: Defence -->
+  <div class="card success section-gap" style="animation-delay:0.5s">
+    <div class="card-label green">// 06 — DEFENSIVE COUNTERMEASURES</div>
+    <div class="defense-grid">
+      <div>
+        <div class="defense-step-num">COUNTERMEASURE 01</div>
+        <div class="defense-step-title">Revoke the Token</div>
+        <div class="defense-step-desc">Call the identity provider's revocation endpoint immediately. The token becomes invalid and cannot be replayed.</div>
+      </div>
+      <div>
+        <div class="defense-step-num">COUNTERMEASURE 02</div>
+        <div class="defense-step-title">Verify with 401</div>
+        <div class="defense-step-desc">Attempt to use the revoked token. A <span style="font-family:var(--mono);color:var(--red);">401 Unauthorized</span> confirms the token is dead and the attacker is locked out.</div>
+      </div>
+      <div>
+        <div class="defense-step-num">COUNTERMEASURE 03</div>
+        <div class="defense-step-title">Audit All OAuth Apps</div>
+        <div class="defense-step-desc">Regularly review and revoke third-party app permissions at <span style="font-family:var(--mono);color:var(--accent);">myaccount.google.com/permissions</span>.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Revoke CTA -->
+  <div class="revoke-section">
+    <a href="/revoke" class="revoke-btn">🔐 REVOKE TOKEN NOW</a>
+    <div class="revoke-note">
+      Calls Google's token revocation API and proves the token is dead with a live 401 response.
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function copyToken() {
+    const token = document.getElementById('token-val').innerText;
+    navigator.clipboard.writeText(token).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.innerText = 'COPIED!';
+      setTimeout(() => btn.innerText = 'COPY', 2000);
+    });
+  }
+</script>
+
+</body>
+</html>

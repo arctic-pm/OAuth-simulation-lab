@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OAuth Lab — Token Revoked</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #050a0e;
+      --surface: #0a1628;
+      --accent: #00ff88;
+      --red: #ff3b3b;
+      --yellow: #ffd700;
+      --text: #c9d8e8;
+      --muted: #4a6070;
+      --border: #0d2137;
+      --mono: 'Share Tech Mono', monospace;
+      --sans: 'Rajdhani', sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,255,136,0.012) 2px, rgba(0,255,136,0.012) 4px
+      );
+      pointer-events: none;
+    }
+
+    .box {
+      max-width: 640px;
+      width: 100%;
+      text-align: center;
+    }
+
+    /* ── Icon ── */
+    .icon {
+      font-size: 64px;
+      margin-bottom: 24px;
+      display: block;
+      animation: pop 0.4s ease;
+    }
+
+    @keyframes pop {
+      from { transform: scale(0.5); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    /* ── Heading ── */
+    h1 {
+      font-family: var(--mono);
+      font-size: 28px;
+      color: var(--accent);
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+      text-shadow: 0 0 20px rgba(0,255,136,0.3);
+    }
+
+    .sub {
+      font-size: 15px;
+      color: var(--muted);
+      margin-bottom: 40px;
+      line-height: 1.6;
+    }
+
+    /* ── Result Rows ── */
+    .result-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 16px 20px;
+      margin-bottom: 12px;
+      text-align: left;
+    }
+
+    .result-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 1px;
+    }
+
+    .result-value {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .ok { color: var(--accent); }
+    .fail { color: var(--red); }
+
+    /* ── Dead Token Box ── */
+    .token-dead {
+      background: rgba(255,59,59,0.06);
+      border: 1px solid rgba(255,59,59,0.2);
+      border-left: 3px solid var(--red);
+      padding: 16px 20px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 32px;
+      line-height: 1.9;
+      text-align: left;
+    }
+
+    .token-dead span { color: var(--red); }
+    .token-dead .token-str { color: var(--accent); word-break: break-all; }
+
+    /* ── Key Takeaways ── */
+    .takeaways {
+      background: rgba(0,255,136,0.03);
+      border: 1px solid rgba(0,255,136,0.15);
+      padding: 20px 24px;
+      margin-bottom: 32px;
+      text-align: left;
+    }
+
+    .takeaways-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--accent);
+      letter-spacing: 3px;
+      margin-bottom: 16px;
+    }
+
+    .takeaway-item {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .takeaway-item:last-child { margin-bottom: 0; }
+
+    .takeaway-num {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .takeaway-text {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .takeaway-text span {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent);
+    }
+
+    /* ── Actions ── */
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+
+    .btn {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 2px;
+      padding: 14px 32px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      border: 1px solid var(--accent);
+      color: var(--accent);
+    }
+
+    .btn-primary:hover {
+      background: rgba(0,255,136,0.08);
+      box-shadow: 0 0 20px rgba(0,255,136,0.15);
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--muted);
+      transform: translateY(-2px);
+    }
+
+    /* ── Footer Note ── */
+    .footer-note {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 2;
+    }
+
+    .footer-note a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .footer-note a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="box">
+
+    <span class="icon">🔐</span>
+
+    <h1>TOKEN SUCCESSFULLY REVOKED</h1>
+    <p class="sub">
+      The captured OAuth token has been permanently invalidated via Google's revocation endpoint.<br/>
+      Here is the live proof that the countermeasure worked.
+    </p>
+
+    <!-- Result Rows -->
+    <div class="result-row">
+      <div class="result-label">REVOCATION API RESPONSE</div>
+      <div class="result-value {% if revoke_status == 200 %}ok{% else %}fail{% endif %}">
+        HTTP {{ revoke_status }}
+        {% if revoke_status == 200 %} — TOKEN INVALIDATED ✓{% else %} — UNEXPECTED RESPONSE{% endif %}
+      </div>
+    </div>
+
+    <div class="result-row">
+      <div class="result-label">REPLAY ATTEMPT WITH DEAD TOKEN</div>
+      <div class="result-value {% if dead_status == 401 %}ok{% else %}fail{% endif %}">
+        HTTP {{ dead_status }}
+        {% if dead_status == 401 %} — 401 UNAUTHORIZED ✓{% else %} — CHECK TOKEN STATE{% endif %}
+      </div>
+    </div>
+
+    <!-- Dead Token Box -->
+    <div class="token-dead">
+      <span style="color:var(--muted);letter-spacing:2px;font-size:10px;">DEAD TOKEN (PARTIAL)</span><br/><br/>
+      Token &nbsp;<span class="token-str">{{ access_token }}</span>&nbsp; was submitted to the Google UserInfo API
+      after revocation.<br/>
+      Response: <span>401 Unauthorized</span> — the identity provider rejected it.<br/>
+      An attacker holding this token is now <span>completely locked out</span>.
+    </div>
+
+    <!-- Key Takeaways -->
+    <div class="takeaways">
+      <div class="takeaways-title">// KEY TAKEAWAYS FROM THIS LAB</div>
+
+      <div class="takeaway-item">
+        <div class="takeaway-num">01</div>
+        <div class="takeaway-text">OAuth tokens are as sensitive as passwords. Anyone holding a valid token can impersonate you silently.</div>
+      </div>
+
+      <div class="takeaway-item">
+        <div class="takeaway-num">02</div>
+        <div class="takeaway-text">Supply chain attacks target the weakest third-party app you trust — not you directly. Your token is only as safe as the app storing it.</div>
+      </div>
+
+      <div class="takeaway-item">
+        <div class="takeaway-num">03</div>
+        <div class="takeaway-text">Overpermissioned scopes dramatically increase the blast radius of a stolen token. Always grant the <span>minimum required scope</span>.</div>
+      </div>
+
+      <div class="takeaway-item">
+        <div class="takeaway-num">04</div>
+        <div class="takeaway-text">Token revocation is an effective and immediate countermeasure. Tokens have a lifespan — revoking them cuts off attacker access instantly.</div>
+      </div>
+
+      <div class="takeaway-item">
+        <div class="takeaway-num">05</div>
+        <div class="takeaway-text">Audit connected apps regularly at <span>myaccount.google.com/permissions</span> and revoke anything you no longer actively use.</div>
+      </div>
+
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <a href="/" class="btn btn-primary">← RUN LAB AGAIN</a>
+      <a href="https://myaccount.google.com/permissions" target="_blank" class="btn btn-secondary">AUDIT MY OAUTH APPS ↗</a>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer-note">
+      This lab was built for cybersecurity education and awareness.<br/>
+      No data was stored externally. All tokens existed only in your local session.<br/>
+      <a href="/">Return to lab homepage</a>
+    </div>
+
+  </div>
+</body>
+</html>
