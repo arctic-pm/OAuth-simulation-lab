@@ -7,10 +7,13 @@ Shows every step explicitly, perfect for educational demo.
 
 from flask import Flask, redirect, request, session, url_for, render_template
 from dotenv import load_dotenv
+import base64
+from email import message_from_bytes
 import requests
 import os
 import secrets
 import urllib.parse
+import time
 
 load_dotenv()
 
@@ -156,6 +159,7 @@ def callback():
 
     # Store everything in session
     session['access_token']  = access_token
+    session['token_captured_at'] = int(time.time())
     session['expires_in']    = expires_in
     session['scope']         = scope
     session['refresh_token'] = refresh_token
@@ -165,19 +169,25 @@ def callback():
 
 
 @app.route('/dashboard')
+@app.route('/dashboard')
 def dashboard():
     if 'access_token' not in session:
         return redirect(url_for('index'))
 
+    # Calculate actual remaining seconds
+    captured_at = session.get('token_captured_at', int(time.time()))
+    expires_in  = session.get('expires_in', 3599)
+    elapsed     = int(time.time()) - captured_at
+    remaining   = max(0, int(expires_in) - elapsed)
+
     return render_template('dashboard.html',
         access_token  = session.get('access_token'),
-        expires_in    = session.get('expires_in'),
+        expires_in    = remaining,          # ← now dynamic
         scope         = session.get('scope'),
         scope_type    = session.get('scope_type'),
         refresh_token = session.get('refresh_token'),
         userinfo      = session.get('userinfo')
     )
-
 
 @app.route('/revoke')
 def revoke():
@@ -210,6 +220,218 @@ def revoke():
         access_token  = partial_token
     )
 
+
+def decode_base64_url(data):
+    """Decode base64url encoded Gmail body data."""
+    if not data:
+        return ""
+    # Fix padding
+    padding = 4 - len(data) % 4
+    if padding != 4:
+        data += '=' * padding
+    try:
+        decoded = base64.urlsafe_b64decode(data)
+        return decoded.decode('utf-8', errors='replace')
+    except Exception:
+        return "[Could not decode content]"
+
+
+def get_auth_headers():
+    """Get authorization headers from session token."""
+    token = session.get('access_token')
+    if not token:
+        return None
+    return {'Authorization': f'Bearer {token}'}
+
+
+# ── Gmail Routes ───────────────────────────────────────────────
+
+@app.route('/api/emails')
+def api_emails():
+    """Fetch list of recent emails."""
+    headers = get_auth_headers()
+    if not headers:
+        return {'error': 'No token in session'}, 401
+
+    response = requests.get(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages',
+        headers=headers,
+        params={'maxResults': 50}
+    )
+
+    if response.status_code != 200:
+        return {'error': f'Gmail API error: {response.status_code}', 'detail': response.json()}, response.status_code
+
+    data = response.json()
+    return {'messages': data.get('messages', [])}
+
+
+@app.route('/api/email/<message_id>')
+def api_email(message_id):
+    """Fetch and decode a specific email."""
+    headers = get_auth_headers()
+    if not headers:
+        return {'error': 'No token in session'}, 401
+
+    response = requests.get(
+        f'https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}',
+        headers=headers,
+        params={'format': 'full'}
+    )
+
+    if response.status_code != 200:
+        return {'error': f'Gmail API error: {response.status_code}'}, response.status_code
+
+    msg = response.json()
+    payload = msg.get('payload', {})
+    headers_list = payload.get('headers', [])
+
+    # Extract subject and sender
+    subject = next((h['value'] for h in headers_list if h['name'] == 'Subject'), '(No Subject)')
+    sender  = next((h['value'] for h in headers_list if h['name'] == 'From'), '(Unknown Sender)')
+
+    # Extract body — check parts first, then direct body
+    body = ""
+    parts = payload.get('parts', [])
+
+    if parts:
+        for part in parts:
+            if part.get('mimeType') == 'text/plain':
+                body = decode_base64_url(part.get('body', {}).get('data', ''))
+                break
+        if not body:
+            # Try HTML part as fallback
+            for part in parts:
+                if part.get('mimeType') == 'text/html':
+                    body = decode_base64_url(part.get('body', {}).get('data', ''))
+                    break
+    else:
+        body = decode_base64_url(payload.get('body', {}).get('data', ''))
+
+    # Handle nested multipart
+    if not body and parts:
+        for part in parts:
+            subparts = part.get('parts', [])
+            for sp in subparts:
+                if sp.get('mimeType') == 'text/plain':
+                    body = decode_base64_url(sp.get('body', {}).get('data', ''))
+                    break
+
+    return {
+        'subject': subject,
+        'from':    sender,
+        'body':    body or '[No readable content found]'
+    }
+
+
+# ── Drive Routes ───────────────────────────────────────────────
+
+@app.route('/api/files')
+def api_files():
+    """Fetch list of Drive files."""
+    headers = get_auth_headers()
+    if not headers:
+        return {'error': 'No token in session'}, 401
+
+    response = requests.get(
+        'https://www.googleapis.com/drive/v3/files',
+        headers=headers,
+        params={'fields': 'files(id,name,mimeType,modifiedTime)', 'pageSize': 10}
+    )
+
+    if response.status_code != 200:
+        return {'error': f'Drive API error: {response.status_code}', 'detail': response.json()}, response.status_code
+
+    return response.json()
+
+
+@app.route('/api/download/<file_id>')
+def api_download(file_id):
+    """Download a file from Drive."""
+    headers = get_auth_headers()
+    if not headers:
+        return {'error': 'No token in session'}, 401
+
+    # First get file metadata for name and type
+    meta = requests.get(
+        f'https://www.googleapis.com/drive/v3/files/{file_id}',
+        headers=headers,
+        params={'fields': 'name,mimeType'}
+    ).json()
+
+    filename = meta.get('name', 'download')
+    mime     = meta.get('mimeType', 'application/octet-stream')
+
+    # Google Workspace files need export instead of direct download
+    export_types = {
+        'application/vnd.google-apps.document':     ('application/pdf', 'pdf'),
+        'application/vnd.google-apps.spreadsheet':  ('text/csv', 'csv'),
+        'application/vnd.google-apps.presentation': ('application/pdf', 'pdf'),
+    }
+
+    if mime in export_types:
+        export_mime, ext = export_types[mime]
+        dl = requests.get(
+            f'https://www.googleapis.com/drive/v3/files/{file_id}/export',
+            headers=headers,
+            params={'mimeType': export_mime}
+        )
+        filename = f"{filename}.{ext}"
+    else:
+        dl = requests.get(
+            f'https://www.googleapis.com/drive/v3/files/{file_id}',
+            headers=headers,
+            params={'alt': 'media'}
+        )
+
+    from flask import Response
+    return Response(
+        dl.content,
+        mimetype=mime,
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+    )
+
+
+# ── Calendar Routes ────────────────────────────────────────────
+
+@app.route('/api/events')
+def api_events():
+    """Fetch upcoming calendar events."""
+    headers = get_auth_headers()
+    if not headers:
+        return {'error': 'No token in session'}, 401
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+
+    response = requests.get(
+        'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+        headers=headers,
+        params={
+            'maxResults':  5,
+            'orderBy':     'startTime',
+            'singleEvents': True,
+            'timeMin':     now,
+        }
+    )
+
+    if response.status_code != 200:
+        return {'error': f'Calendar API error: {response.status_code}', 'detail': response.json()}, response.status_code
+
+    data = response.json()
+    events = []
+
+    for e in data.get('items', []):
+        start = e.get('start', {})
+        end   = e.get('end', {})
+        events.append({
+            'summary':  e.get('summary', '(No Title)'),
+            'start':    start.get('dateTime', start.get('date', 'N/A')),
+            'end':      end.get('dateTime',   end.get('date',   'N/A')),
+            'location': e.get('location', ''),
+        })
+
+    return {'events': events}
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

@@ -441,6 +441,144 @@
       from { opacity: 0; transform: translateY(16px); }
       to { opacity: 1; transform: translateY(0); }
     }
+        /* ── API Explorer ── */
+    .api-btn {
+      background: transparent;
+      border: 1px solid var(--red);
+      color: var(--red);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 2px;
+      padding: 10px 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+      margin-bottom: 16px;
+    }
+
+    .api-btn:hover {
+      background: rgba(255,59,59,0.08);
+      box-shadow: 0 0 16px rgba(255,59,59,0.15);
+    }
+
+    .api-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .api-result {
+      border: 1px solid var(--border);
+      background: #020810;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .result-inner {
+      padding: 4px 0;
+    }
+
+    .api-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .api-row:last-child { border-bottom: none; }
+
+    .api-row:hover { background: rgba(255,255,255,0.02); }
+
+    .api-row-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .api-row-meta {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .mini-btn {
+      background: transparent;
+      border: 1px solid;
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 3px 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .mini-btn.view {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .mini-btn.view:hover { background: rgba(0,255,136,0.08); }
+
+    .mini-btn.download {
+      color: var(--blue);
+      border-color: var(--blue);
+    }
+
+    .mini-btn.download:hover { background: rgba(0,170,255,0.08); }
+
+    .api-loading {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      padding: 16px 14px;
+      text-align: center;
+      animation: pulse 1s infinite;
+    }
+
+    .api-error {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--red);
+      padding: 12px 14px;
+      background: rgba(255,59,59,0.05);
+      border-left: 2px solid var(--red);
+      margin: 4px;
+    }
+
+    .event-row {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .event-row:last-child { border-bottom: none; }
+
+    .event-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .event-time {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--yellow);
+    }
+
+    .event-location {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
   </style>
 </head>
 <body>
@@ -502,8 +640,8 @@
       <div class="card-label green">// 02 — TOKEN METADATA</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
         <div>
-          <div class="stat-value green">{{ expires_in }}s</div>
-          <div class="stat-desc">Token lifetime (~1 hr)</div>
+          <div class="stat-value green" id="token-timer">{{ expires_in }}s</div>
+          <div class="stat-desc" id="timer-label">Token lifetime remaining</div>
         </div>
         <div>
           <div class="stat-value {% if scope_type == 'full' %}red{% else %}yellow{% endif %}">
@@ -668,10 +806,147 @@
       Calls Google's token revocation API and proves the token is dead with a live 401 response.
     </div>
   </div>
+  <!-- ═══════════════════════════════════════════════════════════ -->
+<!-- LIVE API EXPLORER                                           -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+
+<div class="api-explorer section-gap" style="margin-top:40px;">
+
+  <!-- Explorer Header -->
+  <div style="
+    background: rgba(0,170,255,0.06);
+    border: 1px solid rgba(0,170,255,0.2);
+    border-left: 3px solid var(--blue);
+    padding: 16px 24px;
+    margin-bottom: 24px;
+  ">
+    <div style="font-family:var(--mono);font-size:10px;color:var(--blue);letter-spacing:3px;margin-bottom:6px;">
+      // LIVE API EXPLORER
+    </div>
+    <div style="font-size:14px;color:var(--text);line-height:1.6;">
+      This section demonstrates data accessible via the granted OAuth scopes.
+      Each button makes a real API call using the captured token.
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted);">
+        — Email content is decoded from Base64 (Gmail API format).
+      </span>
+    </div>
+  </div>
+
+  <div class="grid-2">
+
+    <!-- ── GMAIL ── -->
+    <div class="card" id="gmail-card">
+      <div class="card-label red">// GMAIL — INBOX ACCESS</div>
+
+      <button class="api-btn" onclick="loadEmails()">
+        📧 LOAD EMAILS
+      </button>
+
+      <div id="email-list" class="api-result" style="display:none;">
+        <div class="result-inner" id="email-list-inner"></div>
+      </div>
+
+      <!-- Email Content -->
+      <div id="email-content" style="display:none;margin-top:16px;">
+        <div style="
+          font-family:var(--mono);font-size:10px;
+          color:var(--muted);letter-spacing:2px;
+          margin-bottom:8px;padding-bottom:8px;
+          border-bottom:1px solid var(--border);
+          display:flex;justify-content:space-between;align-items:center;
+        ">
+          <span>// EMAIL CONTENT</span>
+          <span onclick="closeEmail()"
+            style="cursor:pointer;color:var(--red);font-size:12px;">✕ CLOSE</span>
+        </div>
+        <div id="email-subject"
+          style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px;"></div>
+        <div id="email-from"
+          style="font-family:var(--mono);font-size:11px;color:var(--accent);margin-bottom:16px;"></div>
+        <div id="email-body"
+          style="font-size:13px;color:var(--muted);line-height:1.7;
+                 max-height:200px;overflow-y:auto;
+                 background:#020810;padding:12px;border:1px solid var(--border);
+                 white-space:pre-wrap;word-break:break-word;"></div>
+      </div>
+    </div>
+
+    <!-- ── DRIVE ── -->
+    <div class="card" id="drive-card">
+      <div class="card-label red">// GOOGLE DRIVE — FILE ACCESS</div>
+
+      <button class="api-btn" onclick="loadFiles()">
+        📁 LOAD DRIVE FILES
+      </button>
+
+      <div id="file-list" class="api-result" style="display:none;">
+        <div class="result-inner" id="file-list-inner"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── CALENDAR ── -->
+  <div class="card section-gap" id="calendar-card">
+    <div class="card-label yellow">// GOOGLE CALENDAR — EVENT ACCESS</div>
+
+    <button class="api-btn" onclick="loadEvents()" style="border-color:var(--yellow);color:var(--yellow);">
+      📅 LOAD CALENDAR EVENTS
+    </button>
+
+    <div id="event-list" class="api-result" style="display:none;">
+      <div class="result-inner" id="event-list-inner"></div>
+    </div>
+  </div>
+
+</div>
 
 </div>
 
 <script>
+  // ── Copy Token ──────────────────────────────────────────────
+  // ── Live Token Countdown ─────────────────────────────────────
+(function() {
+  const timerEl = document.getElementById('token-timer');
+  const labelEl = document.getElementById('timer-label');
+
+  if (!timerEl) return;
+
+  // Parse initial value from Flask
+  let seconds = parseInt(timerEl.innerText.replace('s', ''), 10);
+
+  function formatTime(s) {
+    if (s <= 0) return '00:00';
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
+
+  function tick() {
+    if (seconds <= 0) {
+      timerEl.innerText = 'EXPIRED';
+      timerEl.style.color = 'var(--red)';
+      labelEl.innerText = 'Token expired — cannot be used';
+      clearInterval(timer);
+      return;
+    }
+
+    timerEl.innerText = formatTime(seconds);
+
+    // Change color as token expires
+    if (seconds < 300) {
+      timerEl.style.color = 'var(--red)';       // last 5 mins — red
+    } else if (seconds < 600) {
+      timerEl.style.color = 'var(--yellow)';    // last 10 mins — yellow
+    }
+
+    labelEl.innerText = `Token expires in ${seconds}s`;
+    seconds--;
+  }
+
+  tick(); // run immediately
+  const timer = setInterval(tick, 1000);
+})();
   function copyToken() {
     const token = document.getElementById('token-val').innerText;
     navigator.clipboard.writeText(token).then(() => {
@@ -680,6 +955,201 @@
       setTimeout(() => btn.innerText = 'COPY', 2000);
     });
   }
+
+  // ── Helpers ─────────────────────────────────────────────────
+  function formatDate(iso) {
+    if (!iso || iso === 'N/A') return 'N/A';
+    try {
+      return new Date(iso).toLocaleString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch { return iso; }
+  }
+
+  function showLoading(containerId) {
+    const el = document.getElementById(containerId);
+    el.style.display = 'block';
+    el.querySelector('.result-inner').innerHTML =
+      '<div class="api-loading">⟳ FETCHING DATA...</div>';
+  }
+
+  function showError(innerId, message) {
+    document.getElementById(innerId).innerHTML =
+      `<div class="api-error">⚠ ${message}</div>`;
+  }
+
+  // ── Gmail ────────────────────────────────────────────────────
+  async function loadEmails() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerText = '⟳ LOADING...';
+
+    showLoading('email-list');
+
+    try {
+      const res  = await fetch('/api/emails');
+      const data = await res.json();
+
+      if (data.error) {
+        showError('email-list-inner',
+          data.error === 'No token in session'
+            ? 'No active session. Please log in again.'
+            : `${data.error} — Check Gmail API is enabled in Google Cloud Console.`
+        );
+        return;
+      }
+
+      const messages = data.messages || [];
+
+      if (messages.length === 0) {
+        showError('email-list-inner', 'No messages found in inbox.');
+        return;
+      }
+
+      document.getElementById('email-list-inner').innerHTML =
+        messages.map(m => `
+          <div class="api-row">
+            <span class="api-row-label">📧 ${m.id}</span>
+            <button class="mini-btn view" onclick="viewEmail('${m.id}')">VIEW →</button>
+          </div>
+        `).join('');
+
+    } catch (err) {
+      showError('email-list-inner', 'Request failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerText = '📧 RELOAD EMAILS';
+    }
+  }
+
+  async function viewEmail(id) {
+    const content = document.getElementById('email-content');
+    const subject = document.getElementById('email-subject');
+    const from    = document.getElementById('email-from');
+    const body    = document.getElementById('email-body');
+
+    subject.innerText = '⟳ Loading...';
+    from.innerText    = '';
+    body.innerText    = '';
+    content.style.display = 'block';
+
+    try {
+      const res  = await fetch(`/api/email/${id}`);
+      const data = await res.json();
+
+      if (data.error) {
+        subject.innerText = '⚠ Error';
+        body.innerText    = data.error;
+        return;
+      }
+
+      subject.innerText = data.subject;
+      from.innerText    = `From: ${data.from}`;
+      body.innerText    = data.body;
+
+    } catch (err) {
+      subject.innerText = '⚠ Failed to load';
+      body.innerText    = err.message;
+    }
+  }
+
+  function closeEmail() {
+    document.getElementById('email-content').style.display = 'none';
+  }
+
+  // ── Drive ────────────────────────────────────────────────────
+  async function loadFiles() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerText = '⟳ LOADING...';
+
+    showLoading('file-list');
+
+    try {
+      const res  = await fetch('/api/files');
+      const data = await res.json();
+
+      if (data.error) {
+        showError('file-list-inner',
+          `${data.error} — Check Google Drive API is enabled in Google Cloud Console.`
+        );
+        return;
+      }
+
+      const files = data.files || [];
+
+      if (files.length === 0) {
+        showError('file-list-inner', 'No files found in Drive.');
+        return;
+      }
+
+      document.getElementById('file-list-inner').innerHTML =
+        files.map(f => `
+          <div class="api-row">
+            <div style="flex:1;overflow:hidden;">
+              <div class="api-row-label">📄 ${f.name}</div>
+              <div class="api-row-meta">${f.mimeType.split('.').pop().split('/').pop()}</div>
+            </div>
+            <a href="/api/download/${f.id}" class="mini-btn download">⬇ GET</a>
+          </div>
+        `).join('');
+
+    } catch (err) {
+      showError('file-list-inner', 'Request failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerText = '📁 RELOAD FILES';
+    }
+  }
+
+  // ── Calendar ─────────────────────────────────────────────────
+  async function loadEvents() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerText = '⟳ LOADING...';
+
+    showLoading('event-list');
+
+    try {
+      const res  = await fetch('/api/events');
+      const data = await res.json();
+
+      if (data.error) {
+        showError('event-list-inner',
+          `${data.error} — Check Google Calendar API is enabled in Google Cloud Console.`
+        );
+        return;
+      }
+
+      const events = data.events || [];
+
+      if (events.length === 0) {
+        showError('event-list-inner', 'No upcoming events found.');
+        return;
+      }
+
+      document.getElementById('event-list-inner').innerHTML =
+        events.map(e => `
+          <div class="event-row">
+            <div class="event-title">📅 ${e.summary}</div>
+            <div class="event-time">
+              ${formatDate(e.start)} → ${formatDate(e.end)}
+            </div>
+            ${e.location
+              ? `<div class="event-location">📍 ${e.location}</div>`
+              : ''}
+          </div>
+        `).join('');
+
+    } catch (err) {
+      showError('event-list-inner', 'Request failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerText = '📅 RELOAD EVENTS';
+    }
+  }
+  
 </script>
 
 </body>
