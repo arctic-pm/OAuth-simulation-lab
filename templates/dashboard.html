@@ -1023,40 +1023,103 @@
     }
   }
 
-  async function viewEmail(id) {
-    const content = document.getElementById('email-content');
-    const subject = document.getElementById('email-subject');
-    const from    = document.getElementById('email-from');
-    const body    = document.getElementById('email-body');
+async function viewEmail(id) {
+  const content = document.getElementById('email-content');
+  const subject = document.getElementById('email-subject');
+  const from    = document.getElementById('email-from');
+  const body    = document.getElementById('email-body');
 
-    subject.innerText = '⟳ Loading...';
-    from.innerText    = '';
-    body.innerText    = '';
-    content.style.display = 'block';
+  subject.innerText     = '⟳ Loading...';
+  from.innerText        = '';
+  body.innerHTML        = '';
+  content.style.display = 'block';
+  content.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-    try {
-      const res  = await fetch(`/api/email/${id}`);
-      const data = await res.json();
+  try {
+    const res  = await fetch(`/api/email/${id}`);
+    const data = await res.json();
 
-      if (data.error) {
-        subject.innerText = '⚠ Error';
-        body.innerText    = data.error;
-        return;
-      }
-
-      subject.innerText = data.subject;
-      from.innerText    = `From: ${data.from}`;
-      body.innerText    = data.body;
-
-    } catch (err) {
-      subject.innerText = '⚠ Failed to load';
-      body.innerText    = err.message;
+    if (data.error) {
+      subject.innerText = '⚠ Error';
+      body.innerText    = data.error;
+      return;
     }
-  }
 
-  function closeEmail() {
-    document.getElementById('email-content').style.display = 'none';
+    subject.innerText = data.subject;
+    from.innerText    = `From: ${data.from}`;
+
+    // Clear any previous badge
+    const oldBadge = document.getElementById('email-type-badge');
+    if (oldBadge) oldBadge.remove();
+
+    const badge = document.createElement('div');
+    badge.id = 'email-type-badge';
+    badge.style.cssText = `
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      padding: 4px 0 8px 0;
+    `;
+
+    // ── Render based on body_type from backend ────────────────
+    if (data.body_type === 'html') {
+      badge.style.color   = 'var(--blue)';
+      badge.innerText     = '// RENDERED AS HTML EMAIL';
+      body.innerHTML      = '';
+
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = `
+        width: 100%;
+        min-height: 300px;
+        max-height: 500px;
+        border: none;
+        background: #fff;
+        border-radius: 2px;
+        display: block;
+      `;
+      iframe.setAttribute('sandbox', 'allow-same-origin');
+      body.appendChild(iframe);
+
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open();
+      doc.write(data.body);
+      doc.close();
+
+      iframe.onload = () => {
+        try {
+          iframe.style.height =
+            iframe.contentDocument.body.scrollHeight + 40 + 'px';
+        } catch(e) {}
+      };
+
+    } else {
+      // Plain text
+      badge.style.color = 'var(--accent)';
+      badge.innerText   = '// PLAIN TEXT EMAIL';
+      body.style.cssText = `
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.7;
+        max-height: 400px;
+        overflow-y: auto;
+        background: #020810;
+        padding: 16px;
+        border: 1px solid var(--border);
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--mono);
+        display: block;
+      `;
+      body.innerText = data.body;
+    }
+
+    body.parentNode.insertBefore(badge, body);
+
+  } catch (err) {
+    subject.innerText = '⚠ Failed to load';
+    body.innerText    = err.message;
   }
+}
 
   // ── Drive ────────────────────────────────────────────────────
   async function loadFiles() {

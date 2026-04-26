@@ -14,6 +14,7 @@ import os
 import secrets
 import urllib.parse
 import time
+import re 
 
 load_dotenv()
 
@@ -35,6 +36,30 @@ GOOGLE_REVOKE    = "https://oauth2.googleapis.com/revoke"
 print("APP STARTING...")
 
 # ── Routes ─────────────────────────────────────────────────────
+def clean_email_body(body, body_type):
+    """
+    Clean up email body for display.
+    """
+
+    if body_type != 'html':
+        return body
+
+    # Remove base64 embedded images
+    body = re.sub(
+        r'src="data:image/[^;]+;base64,[^"]+"',
+        'src="" alt="[Embedded Image]" style="display:none"',
+        body
+    )
+
+    # Remove tracking pixels (1x1 images)
+    body = re.sub(
+        r'<img[^>]+width=["\']1["\'][^>]+height=["\']1["\'][^>]*>',
+        '',
+        body,
+        flags=re.IGNORECASE
+    )
+
+    return body
 
 @app.route('/')
 def index():
@@ -268,7 +293,6 @@ def api_emails():
 
 @app.route('/api/email/<message_id>')
 def api_email(message_id):
-    """Fetch and decode a specific email."""
     headers = get_auth_headers()
     if not headers:
         return {'error': 'No token in session'}, 401
@@ -290,40 +314,61 @@ def api_email(message_id):
     subject = next((h['value'] for h in headers_list if h['name'] == 'Subject'), '(No Subject)')
     sender  = next((h['value'] for h in headers_list if h['name'] == 'From'), '(Unknown Sender)')
 
-    # Extract body — check parts first, then direct body
-    body = ""
-    parts = payload.get('parts', [])
+    # ── Recursive part extractor ──────────────────────────────
+    def extract_parts(payload):
+        """
+        Recursively walk MIME parts to find text/plain and text/html.
+        Handles deeply nested multipart/alternative, multipart/mixed etc.
+        """
+        plain = None
+        html  = None
 
-    if parts:
-        for part in parts:
-            if part.get('mimeType') == 'text/plain':
-                body = decode_base64_url(part.get('body', {}).get('data', ''))
-                break
-        if not body:
-            # Try HTML part as fallback
-            for part in parts:
-                if part.get('mimeType') == 'text/html':
-                    body = decode_base64_url(part.get('body', {}).get('data', ''))
-                    break
-    else:
-        body = decode_base64_url(payload.get('body', {}).get('data', ''))
+        def walk(part):
+            nonlocal plain, html
+            mime = part.get('mimeType', '')
 
-    # Handle nested multipart
-    if not body and parts:
-        for part in parts:
-            subparts = part.get('parts', [])
-            for sp in subparts:
-                if sp.get('mimeType') == 'text/plain':
-                    body = decode_base64_url(sp.get('body', {}).get('data', ''))
-                    break
+            if mime == 'text/plain' and not plain:
+                data = part.get('body', {}).get('data', '')
+                if data:
+                    plain = decode_base64_url(data)
 
+            elif mime == 'text/html' and not html:
+                data = part.get('body', {}).get('data', '')
+                if data:
+                    html = decode_base64_url(data)
+
+            # Recurse into nested parts
+            for subpart in part.get('parts', []):
+                walk(subpart)
+
+        # Start walk — check top level body first
+        top_data = payload.get('body', {}).get('data', '')
+        if top_data:
+            mime = payload.get('mimeType', '')
+            if mime == 'text/html':
+                html = decode_base64_url(top_data)
+            else:
+                plain = decode_base64_url(top_data)
+
+        # Then walk all parts
+        for part in payload.get('parts', []):
+            walk(part)
+
+        return plain, html
+
+    plain_body, html_body = extract_parts(payload)
+
+    # Prefer HTML for rich emails, fall back to plain
+    body      = html_body or plain_body or '[No readable content found]'
+    body_type = 'html' if html_body else 'plain'
+    body = clean_email_body(body, body_type)
+    
     return {
-        'subject': subject,
-        'from':    sender,
-        'body':    body or '[No readable content found]'
+        'subject':   subject,
+        'from':      sender,
+        'body':      body,
+        'body_type': body_type       # tell frontend what type it is
     }
-
-
 # ── Drive Routes ───────────────────────────────────────────────
 
 @app.route('/api/files')
